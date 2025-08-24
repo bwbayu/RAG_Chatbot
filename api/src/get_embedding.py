@@ -1,10 +1,9 @@
-# utils/get_embedding.py
+# src/get_embedding.py
 import os
 from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
 from pinecone_text.sparse import BM25Encoder
 import httpx
-from typing import List
 
 load_dotenv()
 
@@ -31,6 +30,7 @@ async def get_dense_embeddings(text: str, dim_size: int = EMBED_DIM) -> list[flo
         "encoding_format": "float",
         "dimensions": dim,
     }
+
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             SILICONFLOW_URL_EMBEDDING,
@@ -38,6 +38,7 @@ async def get_dense_embeddings(text: str, dim_size: int = EMBED_DIM) -> list[flo
             headers=headers,
             timeout=20,
         )
+        
     response.raise_for_status()
     data = response.json()
     if "data" in data and data["data"]:

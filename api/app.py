@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from utils.rag_pipeline import RAG_pipeline_async
+from src.rag_pipeline import RAG_pipeline_async
 import math
 from dataclasses import dataclass
 

@@ -1,4 +1,4 @@
-# utils/bm25_model.py
+# src/bm25_model.py
 from pathlib import Path
 from pinecone_text.sparse import BM25Encoder
 

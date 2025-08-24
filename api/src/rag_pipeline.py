@@ -1,4 +1,4 @@
-# utils/rag_pipeline.py
+# src/rag_pipeline.py
 import json
 import os
 from collections import defaultdict
@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from pinecone.grpc import PineconeGRPC as Pinecone
-from utils.get_embedding import get_dense_embeddings, get_sparse_embeddings
-from utils.bm25_model import load_bm25_model
+from src.get_embedding import get_dense_embeddings, get_sparse_embeddings
+from src.bm25_model import load_bm25_model
 
 from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -48,7 +48,6 @@ TYPES = ['Berita', 'Fasilitas', 'Fasilitas Departemen Ilmu Komputer', 'Fasilitas
 async def classify_query(query: str, chat_history) -> List[str]:
     template = """Klasifikasikan query berikut dan, jika ada, riwayat obrolan ke dalam satu atau lebih kategori dari list ini: {types}.
     Kembalikan daftar kategori yang relevan dalam format list of string (misalnya, ["KBK/Penjurusan", "Mata Kuliah"]).
-    Jika ada yang bertanya terkait profil kualifikasi lulusan, capaian pembelajaran masukkan ke kategori ["ProgramInfo"].
     Jika ada yang bertanya terkait tujuan masukkan ke kategori ["Visi dan Misi"]
     Jika ada yang bertanya terkait Ilkom maka merujuk pada Ilmu Komputer dan pendilkom pada Pendidikan Ilmu Komputer
     Jika tidak ada kategori spesifik yang cocok atau Anda tidak yakin, kembalikan ["Other"].
@@ -219,25 +218,26 @@ async def context_generation_async(query: str, contexts: List[Dict[str, Any]], c
 
 async def RAG_pipeline_async(query: str, chat_history, streaming: bool = True):
     classified_type = await classify_query(query, chat_history)
-    # search filter
-    dense_task = asyncio.create_task(search_dense_index_async(query, classified_type))
-    sparse_task = asyncio.create_task(search_sparse_index_async(query, classified_type))
-    # search non-filter
-    dense_task2 = asyncio.create_task(search_dense_index_async(query, ["Other"]))
-    sparse_task2 = asyncio.create_task(search_sparse_index_async(query, ["Other"]))
-    # gather
-    dense_results, dense_results2, sparse_results, sparse_results2 = await asyncio.gather(
-        dense_task, dense_task2, sparse_task, sparse_task2,return_exceptions=False)
+    # create task to search data from pinecone simultaneously
+    async with asyncio.TaskGroup() as tg:
+        t_dense   = tg.create_task(search_dense_index_async(query, classified_type))
+        t_sparse  = tg.create_task(search_sparse_index_async(query, classified_type))
+        t_dense2  = tg.create_task(search_dense_index_async(query, ["Other"]))
+        t_sparse2 = tg.create_task(search_sparse_index_async(query, ["Other"]))
+    
+    # get result
+    dense_results   = t_dense.result()
+    sparse_results  = t_sparse.result()
+    dense_results2  = t_dense2.result()
+    sparse_results2 = t_sparse2.result()
 
-    # rerank filter
-    fused_results = rrf_fusion(dense_results, sparse_results)
-    docs = [r['text'] for r in fused_results]
-    # rerank non filter
+    # fusion filter and non filter result
+    fused_results  = rrf_fusion(dense_results,  sparse_results)
     fused_results2 = rrf_fusion(dense_results2, sparse_results2)
-    docs2 = [r['text'] for r in fused_results2]
-    # rerank from filter and non-filter
+    
+    # rerank filtered result
     fused_results.extend(fused_results2)
-    docs.extend(docs2)
+    docs = [r['text'] for r in fused_results]
     contexts = await reranking_results_async(query, docs, fused_results)
 
     return await context_generation_async(query, contexts, chat_history, streaming=streaming)

@@ -1,0 +1,10 @@
+pinecone
+pinecone_text
+langchain_openai
+langchain
+dotenv
+requests
+pinecone[grpc]
+fastapi[standard]
+uvicorn[standard]
+locust

@@ -1,3 +1,4 @@
+# src/locust.py
 from locust import HttpUser, task, constant, events
 import time, json, random, requests
 
@@ -38,7 +39,6 @@ class ChatUser(HttpUser):
                         if not raw:
                             continue
                         if raw.startswith(":"):
-                            # heartbeat/comment
                             continue
                         if raw.startswith("event:"):
                             if raw[6:].strip() == "done":
@@ -53,14 +53,12 @@ class ChatUser(HttpUser):
                                 piece = payload.get("content", "")
                                 nbytes += len(piece.encode("utf-8"))
                             except json.JSONDecodeError:
-                                # potongan data tidak lengkap — abaikan
                                 pass
         except Exception as e:
             exc = e
         finally:
             total = time.perf_counter() - start
 
-            # Fire custom sample untuk TTFT
             events.request.fire(
                 request_type="SSE",
                 name="chat_ttft",
@@ -69,7 +67,7 @@ class ChatUser(HttpUser):
                 exception=exc,
                 context={"status_code": status_code},
             )
-            # Fire custom sample untuk total
+            
             events.request.fire(
                 request_type="SSE",
                 name="chat_total",

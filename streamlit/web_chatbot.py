@@ -1,11 +1,10 @@
-# streamlit_app.py
+# src/web_chatbot.py
 import os
 import requests
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
 from PIL import Image
 import json
-import time
 
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 CHAT_URL = f"{API_BASE}/chat"

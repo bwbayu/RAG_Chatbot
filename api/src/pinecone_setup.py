@@ -1,4 +1,4 @@
-# utils/pinecone_setup.py
+# src/pinecone_setup.py
 import json
 import os
 from pinecone.grpc import PineconeGRPC as Pinecone
