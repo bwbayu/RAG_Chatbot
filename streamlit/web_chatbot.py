@@ -1,4 +1,4 @@
-# src/web_chatbot.py
+# streamlit/web_chatbot.py
 import os
 import requests
 import streamlit as st

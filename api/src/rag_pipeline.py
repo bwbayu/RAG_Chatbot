@@ -1,4 +1,4 @@
-# src/rag_pipeline.py
+# api/src/rag_pipeline.py
 import json
 import os
 from collections import defaultdict
