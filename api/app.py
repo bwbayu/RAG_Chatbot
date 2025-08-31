@@ -2,6 +2,7 @@
 import asyncio
 import json
 import time
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -10,6 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.rag_pipeline import RAG_pipeline_async
 import math
 from dataclasses import dataclass
+
+from google.oauth2 import service_account # local/docker
+from google.cloud import firestore
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 app = FastAPI(title="RAG Chatbot UPI")
 app.add_middleware(
@@ -30,6 +36,68 @@ GATE = asyncio.Semaphore(MAX_CONCURRENT) # set semaphore with 32 max concurrent
 RATE_PER_HOUR = 3.0  # fill rate per hour
 RATE_PER_SECOND = RATE_PER_HOUR/3600.0
 BURST_PER_IP = 10.0  # maximum capacity of bucket
+TZ_NAME = "UTC"
+DAILY_LIMIT = 50
+RETENTION_DAYS = 35
+
+# # ------------- local only (docker)
+# creds = service_account.Credentials.from_service_account_file(
+#     os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+# )
+# _db = firestore.Client(project=os.environ["GOOGLE_CLOUD_PROJECT"], credentials=creds)
+
+# ------------- prod cloud-run (service account setting on security cloud run)
+_db = firestore.Client()
+
+# calculate timer for reset global daily limit
+def _seconds_until_midnight(tz_name: str = TZ_NAME) -> int:
+    tz = ZoneInfo(tz_name)
+    now = datetime.now(tz)
+    tomorrow = now.date() + timedelta(days=1)
+    reset = datetime.combine(tomorrow, datetime.min.time(), tzinfo=tz)
+    return int((reset - now).total_seconds())
+
+# get timer for clean up data in firestore
+def _ttl_timestamp(days: int = RETENTION_DAYS):
+    return datetime.now(timezone.utc) + timedelta(days=days)
+
+# check global daily limit
+def _allow_daily_global_firestore_sync() -> tuple[bool, int, int]:
+    # get timezone and today format
+    tz = ZoneInfo(TZ_NAME)
+    today_id = datetime.now(tz).date().isoformat()
+    # create firestore collection
+    doc = _db.collection("rate_global").document(today_id)
+
+    @firestore.transactional
+    def _tx(tx: firestore.Transaction):
+        snap = doc.get(transaction=tx)
+        # get data
+        count = int(snap.get("count") or 0) if snap.exists else 0
+
+        # check data (reach max)
+        if count >= DAILY_LIMIT:
+            return False, 0
+        
+        # create or update data
+        if snap.exists:
+            tx.update(doc, {"count": firestore.Increment(1)})
+        else:
+            tx.set(doc, {"count": 1, "ttl": _ttl_timestamp()})
+        
+        # check remaining
+        remaining = max(0, DAILY_LIMIT - (count + 1))
+        return True, remaining
+
+    # update and get data
+    allowed, remaining = _tx(_db.transaction())
+    # calculate remaining timer until reset
+    retry_after = _seconds_until_midnight()
+    return allowed, remaining, retry_after
+
+# move rate limit checking to different thread pool
+async def allow_daily_global_firestore() -> tuple[bool, int, int]:
+    return await asyncio.to_thread(_allow_daily_global_firestore_sync)
 
 @dataclass
 class _Bucket:
@@ -82,6 +150,20 @@ async def chat(request: Request):
     if not query or not isinstance(query, str):
         return JSONResponse(status_code=400, content={"detail": "message is required"})
 
+    # global daily rate limit
+    allowed_daily, remaining, retry_after = await allow_daily_global_firestore()
+    if not allowed_daily:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Daily cap reached"},
+            headers={
+                "Retry-After": str(int(math.ceil(retry_after))),
+                "X-RateLimit-Limit-Day": str(DAILY_LIMIT),
+                "X-RateLimit-Remaining-Day": str(remaining),
+                "X-RateLimit-Reset-Seconds": str(int(retry_after)),
+            },
+        )
+
     # rate-limit per IP
     ip = request.client.host if request.client else "unknown"
     # check rate limit
@@ -91,7 +173,8 @@ async def chat(request: Request):
         return JSONResponse(
             status_code=429,
             content={"detail": "Too Many Requests"},
-            headers={"Retry-After": str(int(math.ceil(retry_after or 1)))}
+            headers={
+                "Retry-After": str(int(math.ceil(retry_after or 1)))}
         )
 
     # 

@@ -22,8 +22,8 @@ This app answers user questions by retrieving relevant content from the UPI CS s
    FastAPI serves a **Server-Sent Events** (`text/event-stream`) endpoint at `/chat` that streams tokens to the client.
 
 4. **Safety & Ops**
-
    * **Token bucket per IP** rate limiter to prevent abuse and noisy neighbors.
+   * **Global rate limiter with firestore** rate limiter to prevent abuse and noisy neighbors in global scale.
    * Load testing with **Locust** (`src/locust.py`).
 
 ---
@@ -31,6 +31,7 @@ This app answers user questions by retrieving relevant content from the UPI CS s
 ## Tech Stack
 
 * **Backend**: FastAPI, SSE, Python 3.10+
+* **Database**: Firestore
 * **Retrieval**: BM25 (sparse), dense embeddings (provider configurable)
 * **RAG Orchestration**: `src/rag_pipeline.py`
 * **Rate Limiting**: Token bucket per IP
@@ -81,6 +82,7 @@ Common keys (check `.env.example` for the authoritative list and exact names):
 * **Server**: `API_HOST`, `API_PORT` (FastAPI), CORS origins
 * **Rate limiting**: e.g., tokens per minute, refill rate
 * **UI**: `API_BASE_URL` for the Streamlit app to reach the API
+* **Firestore credentials**: `GOOGLE_APPLICATION_CREDENTIALS` path to json file of keys that you can generate from service account with roles *Firebase Admin*, `GOOGLE_CLOUD_PROJECT` project name in firestore
 
 > Be explicit in production: lock down CORS, set sensible rate limits, and never commit `.env`.
 
@@ -121,6 +123,7 @@ By default:
 
 ```bash
 # From repo root
+# 1. UNCOMMENT FOR LOCAL/DOCKER in api/app.py
 docker compose up --build
 ```
 
@@ -133,7 +136,7 @@ Compose will bring up **api** and **streamlit** services, network them together,
 * **Path**: `/chat`
 * **Protocol**: **Server-Sent Events** (`Content-Type: text/event-stream`)
 * **Purpose**: streams generated tokens as they’re produced by the LLM
-* **Rate limiting**: per-IP token bucket (expect HTTP 429 when exceeded)
+* **Rate limiting**: per-IP token bucket (expect HTTP 429 when exceeded) and global daily limit
 
 ---
 
