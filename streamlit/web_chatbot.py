@@ -119,11 +119,11 @@ if user_question:
                         retry_after = data.get("retry_after", retry_after)
                     except Exception:
                         pass
-                msg = "Maaf, server sedang ramai. "
+                msg = "Maaf, saat ini ada pembatasan jumlah pertanyaan yang bisa diajukan."
                 if retry_after:
-                    msg += f"Coba lagi dalam ~{retry_after} detik."
+                    msg += f"Silakan coba lagi dalam ~{retry_after} detik."
                 else:
-                    msg += "Coba lagi sebentar lagi."
+                    msg += "Silakan coba sebentar lagi."
                 full_response = msg
             else:
                 full_response = f"Maaf, server error: {http_err}"
