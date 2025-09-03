@@ -18,9 +18,14 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 app = FastAPI(title="RAG Chatbot UPI")
+
+origins = [
+    "https://chatbot-upi.bwbayu.space/"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: restrict in production
+    allow_origins=origins,  # TODO: restrict in production
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
