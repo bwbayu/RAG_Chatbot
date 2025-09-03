@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 app = FastAPI(title="RAG Chatbot UPI")
 
 origins = [
-    "https://chatbot-upi.bwbayu.space/"
+    "https://chatbot-upi.bwbayu.space"
 ]
 
 app.add_middleware(
